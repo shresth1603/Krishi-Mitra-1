@@ -1,0 +1,22 @@
+{
+  "model_name": "krishi_plant_disease_mobilenetv2",
+  "architecture": "MobileNetV2 Transfer Learning",
+  "input_shape": [224, 224, 3],
+  "color_mode": "RGB",
+  "preprocessing": "Rescaling [0, 1] via pixel / 255.0",
+  "num_classes": 38,
+  "weights_file": "model/krishi_model.h5",
+  "tflite_file": "model/krishi_model.tflite",
+  "dataset": {
+    "name": "PlantVillage Dataset",
+    "classes": 38,
+    "source": "https://www.tensorflow.org/datasets/catalog/plant_village",
+    "alternative_source": "https://data.mendeley.com/datasets/tywbtsjrjv/1"
+  },
+  "limitations": [
+    "Trained predominantly on laboratory/controlled-background leaf photographs.",
+    "Field-level real-world accuracy may vary under complex natural backgrounds, direct sunlight glare, or multi-disease co-infections.",
+    "Model confidence represents probability of class assignment, NOT physical severity of the disease.",
+    "Predictions should be treated as guidance and verified by agricultural extension officers or Krishi Vigyan Kendra (KVK)."
+  ]
+}

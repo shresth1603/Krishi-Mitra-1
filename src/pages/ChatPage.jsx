@@ -212,13 +212,15 @@ const ChatPage = () => {
     const text = advisoryMode === 'short' ? result?.advisory_short : result?.advisory_detail;
     const sections = parseAdvisoryText(text || "")
     return {
-      diseaseName: result?.disease || "Unknown",
-      crop:        result?.crop,
-      confidence:  result?.confidence || 0,
-      severity:    result?.severity || "medium",
-      isHealthy:   result?.is_healthy || false,
+      diseaseName:  result?.disease || "Unknown",
+      crop:         result?.crop,
+      confidence:   result?.confidence || 0,
+      severity:     result?.severity || "medium",
+      isHealthy:    result?.is_healthy || false,
+      isMock:       result?.is_mock || false,
+      modelVersion: result?.model_version || "MobileNetV2 (PlantVillage)",
       sections,
-      rawText:     text || "No advisory available.",
+      rawText:      text || "No advisory available.",
     }
   }
 
@@ -370,7 +372,9 @@ const ChatPage = () => {
                     try {
                       const w = JSON.parse(localStorage.getItem('km_weather') || '{}');
                       if (w.temp) return `Current conditions: ${w.temp}°C, ${w.humidity}% humidity, ${w.condition}. ${scanResult?.weather_advisory || 'Check the Weather tab for a 5-day forecast to plan your spray schedule.'}`;
-                    } catch {}
+                    } catch {
+                      // localStorage weather cache unavailable — fallback to scanResult advisory
+                    }
                     return scanResult?.weather_advisory;
                   })()}
                   mandiAdvisory={scanResult?.mandi_advisory}

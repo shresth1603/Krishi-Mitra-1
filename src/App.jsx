@@ -22,6 +22,7 @@ import ProfilePage from "./pages/ProfilePage";
 import SchemesPage from "./pages/SchemesPage";
 import AdvisoriesPage from "./pages/AdvisoriesPage";
 import ContactPage from "./pages/ContactPage";
+import CropRecommendationPage from "./pages/CropRecommendationPage";
 
 function AppContent() {
   const location = useLocation();
@@ -33,15 +34,16 @@ function AppContent() {
 
       <main>
         <Routes>
-          <Route path="/"               element={<HomePage />} />
-          <Route path="/login"          element={<LoginPage />} />
-          <Route path="/market-prices"  element={<MarketPricePage />} />
-          <Route path="/weather"        element={<WeatherPage />} />
-          <Route path="/chat"           element={<ChatPage />} />
-          <Route path="/profile"        element={<ProfilePage />} />
-          <Route path="/schemes"        element={<SchemesPage />} />
-          <Route path="/advisories"     element={<AdvisoriesPage />} />
-          <Route path="/contact"        element={<ContactPage />} />
+          <Route path="/"                   element={<HomePage />} />
+          <Route path="/login"              element={<LoginPage />} />
+          <Route path="/market-prices"      element={<MarketPricePage />} />
+          <Route path="/crop-recommendation" element={<CropRecommendationPage />} />
+          <Route path="/weather"            element={<WeatherPage />} />
+          <Route path="/chat"               element={<ChatPage />} />
+          <Route path="/profile"            element={<ProfilePage />} />
+          <Route path="/schemes"            element={<SchemesPage />} />
+          <Route path="/advisories"         element={<AdvisoriesPage />} />
+          <Route path="/contact"            element={<ContactPage />} />
         </Routes>
       </main>
 

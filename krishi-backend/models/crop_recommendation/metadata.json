@@ -1,0 +1,67 @@
+{
+  "model_type": "RandomForestClassifier",
+  "n_estimators": 200,
+  "random_seed": 42,
+  "features": [
+    "N",
+    "P",
+    "K",
+    "temperature",
+    "humidity",
+    "ph",
+    "rainfall"
+  ],
+  "classes": [
+    "apple",
+    "banana",
+    "blackgram",
+    "chickpea",
+    "coconut",
+    "coffee",
+    "cotton",
+    "grapes",
+    "jute",
+    "kidneybeans",
+    "lentil",
+    "maize",
+    "mango",
+    "mothbeans",
+    "mungbean",
+    "muskmelon",
+    "orange",
+    "papaya",
+    "pigeonpeas",
+    "pomegranate",
+    "rice",
+    "watermelon"
+  ],
+  "n_classes": 22,
+  "train_samples": 1760,
+  "test_samples": 440,
+  "dataset_source": "Kaggle: siddharthss/crop-recommendation-dataset (CC BY 3.0 IGO)",
+  "dataset_rows": 2200,
+  "metrics": {
+    "test_accuracy": 0.9955,
+    "test_precision_weighted": 0.9957,
+    "test_recall_weighted": 0.9955,
+    "test_f1_weighted": 0.9955,
+    "baseline_dt_accuracy": 0.9795,
+    "cv_5fold_mean": 0.9959,
+    "cv_5fold_std": 0.0027
+  },
+  "feature_importance": {
+    "rainfall": 0.2196,
+    "humidity": 0.2171,
+    "K": 0.1808,
+    "P": 0.1513,
+    "N": 0.1034,
+    "temperature": 0.0755,
+    "ph": 0.0523
+  },
+  "limitations": [
+    "Prototype dataset \u2014 Indian regional soil and climate diversity not fully represented.",
+    "Recommendations are based on average lab-measured parameters.",
+    "Predictions should be validated with local agronomists before acting.",
+    "Dataset license: CC BY 3.0 IGO \u2014 suitable for educational and prototyping use."
+  ]
+}

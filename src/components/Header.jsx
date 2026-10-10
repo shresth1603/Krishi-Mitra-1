@@ -43,6 +43,7 @@ const Header = () => {
   const navItems = [
     { name: t('home'), path: '/' },
     { name: t('chat'), path: '/chat' },
+    { name: '🌱 Crop Advisor', path: '/crop-recommendation' },
     { name: t('weather'), path: '/weather' },
     { name: t('marketPrices'), path: '/market-prices' },
     { name: t('schemes'), path: '/schemes' },

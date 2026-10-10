@@ -1,22 +1,58 @@
-# Node
+# ─── Node / Frontend ──────────────────────────────────────────────────────────
 node_modules/
 dist/
 
-# Python
+# ─── Python ───────────────────────────────────────────────────────────────────
 venv/
+env/
+.venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
 
-# Backend env
+# ─── Backend virtual environments ─────────────────────────────────────────────
 krishi-backend/venv/
+krishi-backend/.venv/
 
-# Model files (optional if large)
+# ─── ML Model binaries (large — manage via DVC or manual download) ────────────
 *.h5
 *.tflite
+*.keras
+*.pb
+*.savedmodel
 
-# Env files
+# ─── Trained scikit-learn artifacts ───────────────────────────────────────────
+*.joblib
+*.pkl
+*.pickle
+
+# ─── Datasets (download separately — see README for instructions) ─────────────
+krishi-backend/datasets/
+*.csv
+*.zip
+
+# ─── Secrets / Environment files ──────────────────────────────────────────────
 .env
+.env.*
+!.env.example
+!krishi-backend/env.example
 
-# OS
+# ─── Logs and caches ──────────────────────────────────────────────────────────
+*.log
+.cache/
+.ruff_cache/
+
+# ─── OS files ─────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini**/.venv*/
+**/venv/
+*.py[cod]
+/python-*.exe
+/python-*.msix
+
+/krishi-backend/.venv312/
+
+/krishi-backend/.venv312/

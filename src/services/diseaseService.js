@@ -41,7 +41,18 @@ export async function analyzeImage(imageFile, farmerCtx = {}) {
   if (USE_MOCK) {
     return new Promise(resolve => {
       setTimeout(() => {
-        resolve(MOCK_RESPONSE);
+        resolve({
+          raw_class: "Tomato___Early_blight",
+          disease: "Early Blight",
+          crop: "Tomato",
+          confidence: 91.5,
+          is_healthy: false,
+          severity: "medium",
+          is_mock: true,
+          model_version: "MOCK/DEMO (client simulation)",
+          advisory_short: "Your Tomato has Early Blight — remove infected leaves immediately.",
+          advisory_detail: "DISEASE_SUMMARY: Early Blight fungal infection.\nSEVERITY: Moderate",
+        });
       }, 1500); // simulate 1.5s delay
     });
   }

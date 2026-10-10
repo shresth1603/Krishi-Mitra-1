@@ -2,19 +2,23 @@
 Krishi Mitra — FastAPI Backend (Production)
 ============================================
 Endpoints:
-  POST /analyze          → ML model + Gemini advisory
-  POST /advisory         → Gemini advisory only
-  GET  /health           → Status check
-  GET  /classes          → All 38 class names
-  POST /api/chat         → Secure Gemini chat proxy
-  GET  /api/weather      → OpenWeatherMap proxy (lat/lon or city)
-  GET  /api/mandi        → Agmarknet data proxy
+  POST /analyze                  → ML model (38-class PlantVillage) + Gemini advisory
+  POST /advisory                 → Gemini advisory only (no image needed)
+  GET  /health                   → Status check (model + service availability)
+  GET  /classes                  → All 38 PlantVillage class names
+  POST /api/chat                 → Secure Gemini chat proxy
+  GET  /api/weather              → OpenWeatherMap proxy (lat/lon or city)
+  GET  /api/mandi                → Agmarknet live mandi prices (with mock fallback)
+  POST /api/mandi/forecast       → Mandi price forecasting (autoregressive lag-model / baseline)
+  GET  /api/mandi/forecast/status → Mandi forecasting data availability and provenance
+  POST /api/crop-recommendation  → ML crop recommendation (RandomForest, 22 crops)
+  GET  /api/crop-recommendation/info → Crop model metadata and classes
 
 Run:
   uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 """
 
-import os, io, logging, time, asyncio
+import sys, os, io, logging, time, asyncio
 from pathlib import Path
 from typing import Optional
 from collections import deque
@@ -38,6 +42,34 @@ except ImportError:
     logging.warning("google-genai not installed. AI features disabled. Run: pip install google-genai")
 
 load_dotenv()
+
+# ─── Crop Recommendation module ───────────────────────────────────────────────
+# Add the backend dir to sys.path so crop_recommendation can be imported
+# regardless of how uvicorn is launched.
+sys.path.insert(0, str(Path(__file__).parent))
+try:
+    from crop_recommendation.inference import (
+        predict_crop as _predict_crop_impl,
+        validate_inputs as _validate_crop_inputs,
+        get_model_info as _get_crop_model_info,
+    )
+    _CROP_REC_AVAILABLE = True
+    log_startup = logging.getLogger("krishi")
+    log_startup.info("Crop recommendation module loaded ✓")
+except ImportError as _crop_err:
+    _CROP_REC_AVAILABLE = False
+    logging.warning(f"Crop recommendation module not available: {_crop_err}")
+
+# ─── Mandi Price Forecasting module ───────────────────────────────────────────
+try:
+    from mandi_forecast.service import get_forecast as _get_mandi_forecast_impl
+    from mandi_forecast.service import find_available_dataset as _find_mandi_dataset
+    _MANDI_FORECAST_AVAILABLE = True
+    log_startup.info("Mandi forecasting module loaded ✓")
+except ImportError as _mandi_err:
+    _MANDI_FORECAST_AVAILABLE = False
+    logging.warning(f"Mandi forecasting module not available: {_mandi_err}")
+
 
 GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY","")
 WEATHER_API_KEY  = os.getenv("WEATHER_API_KEY","")
@@ -176,36 +208,47 @@ def get_ml_model():
     return _ml_model
 
 def preprocess_image(image_bytes: bytes) -> np.ndarray:
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img.verify()
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as e:
+        raise ValueError(f"Corrupted or invalid image: {e}")
     img = img.resize((224, 224))
     arr = np.array(img, dtype=np.float32) / 255.0
     return np.expand_dims(arr, axis=0)
 
 def predict_disease(image_bytes: bytes):
+    arr = preprocess_image(image_bytes)
     model = get_ml_model()
     if model is None:
         idx        = np.random.randint(0, len(CLASS_NAMES))
         confidence = float(np.random.uniform(0.72, 0.98))
         raw_class  = CLASS_NAMES[idx]
         crop, disease, healthy = parse_class_name(raw_class)
-        log.info(f"[MOCK] {raw_class} ({confidence:.1%})")
-        return raw_class, confidence, crop, disease, healthy
-    arr         = preprocess_image(image_bytes)
+        log.warning(f"[MOCK/DEMO] {raw_class} ({confidence:.1%}) — mock prediction")
+        return raw_class, confidence, crop, disease, healthy, True
     preds       = model.predict(arr, verbose=0)
     idx         = int(np.argmax(preds[0]))
     confidence  = float(np.max(preds[0]))
     raw_class   = CLASS_NAMES[idx]
     crop, disease, healthy = parse_class_name(raw_class)
-    log.info(f"Predicted: {raw_class} ({confidence:.1%})")
-    return raw_class, confidence, crop, disease, healthy
+    log.info(f"Genuine ML Predicted: {raw_class} ({confidence:.1%})")
+    return raw_class, confidence, crop, disease, healthy, False
 
 # ─── Gemini prompts ───────────────────────────────────────────────────────────
 
-def _estimate_severity_from_confidence(confidence: float) -> str:
-    """Pre-estimate severity from model confidence for use in Gemini prompt."""
-    if confidence >= 0.85: return "Severe"
-    if confidence >= 0.60: return "Moderate"
-    return "Low"
+def _determine_initial_severity(disease: str, is_healthy: bool) -> str:
+    """
+    Determine agronomic severity level based on crop disease characteristics,
+    strictly independent of model classification confidence.
+    """
+    if is_healthy:
+        return "Low"
+    disease_lower = disease.lower()
+    if any(k in disease_lower for k in ["late blight", "greening", "haunglongbing", "mosaic"]):
+        return "Severe"
+    return "Moderate"
 
 
 def build_detailed_prompt(disease: str, confidence: float, crop: str,
@@ -703,7 +746,9 @@ async def analyze_image(
         raise HTTPException(413, "Image too large. Max 10 MB.")
 
     try:
-        raw_class, confidence, crop, disease, is_healthy = predict_disease(image_bytes)
+        raw_class, confidence, crop, disease, is_healthy, is_mock = predict_disease(image_bytes)
+    except ValueError as e:
+        raise HTTPException(400, f"Invalid or corrupt image: {e}")
     except FileNotFoundError as e:
         raise HTTPException(503, str(e))
     except Exception as e:
@@ -712,8 +757,8 @@ async def analyze_image(
 
     advisory_short  = get_gemini_advisory(disease, confidence, crop, region, season, language, "short")
 
-    # Pre-estimate severity from ML confidence for use in the Gemini prompt
-    estimated_severity = _estimate_severity_from_confidence(confidence)
+    # Determine agronomic initial severity (independent of classification confidence)
+    estimated_severity = _determine_initial_severity(disease, is_healthy)
     advisory_detail = get_gemini_advisory(disease, confidence, crop, region, season, language, "detailed",
                                           severity=estimated_severity)
 
@@ -753,7 +798,7 @@ async def analyze_image(
         f"Healthy {crop} fetches a significant premium over diseased produce."
     )
 
-    log.info(f"Analysis complete — disease: {disease}, crop: {crop}, severity: {severity}, ai_used: {bool(GEMINI_API_KEY)}")
+    log.info(f"Analysis complete — disease: {disease}, crop: {crop}, severity: {severity}, is_mock: {is_mock}, ai_used: {bool(GEMINI_API_KEY)}")
 
     return {
         "raw_class":           raw_class,
@@ -762,6 +807,8 @@ async def analyze_image(
         "confidence":          round(confidence * 100, 1),
         "is_healthy":          is_healthy,
         "severity":            severity,
+        "is_mock":             is_mock,
+        "model_version":       "MOCK/DEMO (random)" if is_mock else "MobileNetV2 (PlantVillage)",
         "advisory_short":      advisory_short,
         "advisory_detail":     advisory_detail,
         "economic_impact":     economic_impact,
@@ -1101,3 +1148,176 @@ async def mandi_endpoint(
     }
     cache_set(cache_key, mock_result)
     return mock_result
+
+
+# ─── Crop Recommendation Pydantic Schema ──────────────────────────────────────
+class CropRecommendationRequest(BaseModel):
+    N:           float  # Nitrogen (kg/ha)
+    P:           float  # Phosphorus (kg/ha)
+    K:           float  # Potassium (kg/ha)
+    temperature: float  # °C
+    humidity:    float  # %
+    ph:          float  # soil pH
+    rainfall:    float  # mm/year
+
+
+# ─── Crop Recommendation Endpoints ────────────────────────────────────────────
+
+@app.post("/api/crop-recommendation")
+def crop_recommendation_endpoint(req: CropRecommendationRequest):
+    """
+    Recommend the best crop based on soil nutrients and climate parameters.
+
+    Uses a Random Forest model trained on the PlantVillage-adjacent
+    Kaggle Crop Recommendation Dataset (CC BY 3.0 IGO, 2200 rows, 22 crops).
+
+    IMPORTANT:
+    - This is a prototype recommendation — validate with local agronomists.
+    - The training dataset may not represent all Indian soil/climate diversity.
+    - Do NOT make financial decisions based solely on this prediction.
+
+    Returns ranked crop recommendations with model confidence scores.
+    """
+    if not _CROP_REC_AVAILABLE:
+        raise HTTPException(
+            503,
+            "Crop recommendation model is not available. "
+            "Run: python krishi-backend/crop_recommendation/train.py"
+        )
+
+    inputs = {
+        "N":           req.N,
+        "P":           req.P,
+        "K":           req.K,
+        "temperature": req.temperature,
+        "humidity":    req.humidity,
+        "ph":          req.ph,
+        "rainfall":    req.rainfall,
+    }
+
+    # Validate inputs first
+    errors = _validate_crop_inputs(inputs)
+    if errors:
+        raise HTTPException(
+            422,
+            f"Input validation failed: {'; '.join(errors)}"
+        )
+
+    try:
+        result = _predict_crop_impl(inputs, top_k=5)
+        log.info(
+            f"Crop recommendation: {result['recommended_crop']} "
+            f"({result['confidence']:.1f}%)"
+        )
+        return {
+            **result,
+            "disclaimer": (
+                "This recommendation is based on a prototype dataset. "
+                "Always consult local KVK (Krishi Vigyan Kendra) or agronomist "
+                "before making cropping decisions."
+            ),
+        }
+    except FileNotFoundError as e:
+        raise HTTPException(503, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        log.exception("Crop recommendation error")
+        raise HTTPException(500, f"Crop recommendation failed: {e}")
+
+
+@app.get("/api/crop-recommendation/info")
+def crop_recommendation_info():
+    """
+    Return metadata about the crop recommendation model:
+    supported crops, accuracy metrics, training configuration.
+    """
+    if not _CROP_REC_AVAILABLE:
+        return {
+            "available": False,
+            "message": "Module not loaded. Run: python krishi-backend/crop_recommendation/train.py",
+        }
+    try:
+        info = _get_crop_model_info()
+        return {"available": True, **info}
+    except Exception as e:
+        log.error(f"Crop model info error: {e}")
+        return {"available": False, "error": str(e)}
+
+
+# ─── Mandi Price Forecasting Endpoints ────────────────────────────────────────
+
+class MandiForecastRequest(BaseModel):
+    state:        str = "Maharashtra"
+    commodity:    str = "Tomato"
+    market:       Optional[str] = None
+    horizon_days: int = 7
+
+
+@app.post("/api/mandi/forecast")
+def mandi_forecast_endpoint(req: MandiForecastRequest):
+    """
+    Generate or report price forecasts for a given commodity and state/market.
+
+    Methodology:
+    - Ingests verified historical Agmarknet daily price records.
+    - Evaluates Seasonal Naive baseline vs. Autoregressive Lag-Feature Ridge model.
+    - Strictly performs chronological time-series splitting (no future data leakage).
+    - If historical data is missing or below the 30-day threshold, transparently
+      reports the exact blocker and data requirements rather than fabricating predictions.
+    """
+    if not _MANDI_FORECAST_AVAILABLE:
+        raise HTTPException(
+            503,
+            "Mandi forecasting module is not loaded."
+        )
+
+    if req.horizon_days < 1 or req.horizon_days > 30:
+        raise HTTPException(
+            422,
+            "Forecast horizon must be between 1 and 30 days."
+        )
+
+    try:
+        result = _get_mandi_forecast_impl(
+            state=req.state.strip(),
+            commodity=req.commodity.strip(),
+            market=req.market.strip() if req.market else None,
+            horizon_days=req.horizon_days,
+        )
+        return result
+    except Exception as e:
+        log.exception("Mandi forecast execution error")
+        raise HTTPException(500, f"Mandi forecast failed: {e}")
+
+
+@app.get("/api/mandi/forecast/status")
+def mandi_forecast_status():
+    """
+    Check the current readiness of the historical mandi forecasting pipeline,
+    including loaded dataset files, schema requirements, and known blockers.
+    """
+    if not _MANDI_FORECAST_AVAILABLE:
+        return {
+            "available": False,
+            "error": "Mandi forecasting module not available.",
+        }
+
+    dataset = _find_mandi_dataset()
+    return {
+        "available": True,
+        "historical_dataset_present": dataset is not None,
+        "dataset_file": dataset.name if dataset else None,
+        "data_source_catalog": "https://www.data.gov.in/catalog/current-daily-price-various-commodities-various-markets-mandi",
+        "supported_models": [
+            "SeasonalNaiveBaseline (7-day periodicity)",
+            "LagRidgeForecaster (lags 1, 2, 3, 7 + 7d rolling mean)",
+        ],
+        "minimum_observations_required": 30,
+        "evaluation_metrics": ["MAE", "RMSE", "MAPE"],
+        "status_summary": (
+            "Ready for forecasting" if dataset else
+            "Historical time-series archive pending upload. Live Agmarknet spot price proxy active."
+        ),
+    }
+

@@ -287,6 +287,17 @@ export default function DiseaseResultCard({
         <div style={{ height: 6, background: sev.color, width: "100%" }} />
 
         {/* ── Red Alert Banner ── */}
+        {/* ── Demo / Mock Mode Banner ── */}
+        {data.isMock && (
+          <div style={{
+            padding: "9px 16px", background: "#fef3c7", color: "#92400e",
+            fontSize: 12, fontWeight: 700, textAlign: "center", borderBottom: "1px solid #fde68a"
+          }}>
+            ⚠️ DEMO / MOCK RESULT: Random prediction. Real ML inference model (krishi_model.h5) is loaded when USE_MOCK_MODEL=false.
+          </div>
+        )}
+
+        {/* ── Red Alert Banner ── */}
         {redAlertTriggered && (
           <div style={{
             padding: "10px 16px", background: "#dc2626", color: "#ffffff",
@@ -299,7 +310,7 @@ export default function DiseaseResultCard({
         {/* ── Low Confidence Banner ── */}
         {data.confidence != null && data.confidence < 70 && (
           <div style={{ padding: "8px 16px", background: "#fef08a", color: "#854d0e", fontSize: 13, fontWeight: 600, textAlign: "center" }}>
-            Low confidence — retake photo in better lighting
+            Uncertain diagnosis ({data.confidence}%) — retake photo in better lighting. Do not apply chemicals without officer confirmation.
           </div>
         )}
 
